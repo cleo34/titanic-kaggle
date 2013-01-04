@@ -44,16 +44,27 @@ ggplot(df, aes(ymin = pclass-0.25, ymax = pclass+0.25, title="Fare by class")) +
   facet_grid(survived~pclass, scales="free")
 
 ## Constructing stratas
-getStrata <- function(pc){
-  ret <- with(titanic.train, 
+getStrata <- function(pc, df){
+  ret <- with(df, 
               cut(fare[pclass==pc],
               breaks=quantile(fare[pclass==pc], probs=c(0.00,0.25,0.75,1.00)),
               labels=F,
               include.lowest=T))
-  titanic.train$fare.strata[titanic.train$pclass==pc] <<- ret
   return (ret)
 }
-sapply(pclassrange, getStrata)
+sapply(pclassrange, function(x){
+  titanic.train$fare.strata[titanic.train$pclass==x] <<- getStrata(x, titanic.train)
+})
+sapply(pclassrange, function(x){
+  titanic.test$fare.strata[titanic.test$pclass==x] <<- getStrata(x, titanic.test)
+})
+sapply(pclassrange, function(x){
+  titanic.full$fare.strata[titanic.full$pclass==x] <<- getStrata(x, titanic.full)
+})
+# Need missing fare modelling
+# sapply(pclassrange, function(x){
+#   titanic.predict$fare.strata[titanic.predict$pclass==x] <<- getStrata(x, titanic.predict)
+# })
 
 df <- ddply(.data=titanic.train, .(pclass,fare.strata), summarize,
       total=length(survived),
@@ -67,9 +78,19 @@ ggplot(df, aes(x=fare.strata, y=percentage, title="Percentage of survived by str
 ## missing value for age
 sapply(titanic.train, function(x) sum(is.na(x)))
 
-titanic.full.aged <- subset(titanic.full, !is.na(titanic.full$age))
-titanic.full.not.aged <- subset(titanic.full, is.na(titanic.full$age))
-model.age <- glm(age~pclass+sex+sibsp+pclass:fare, data=titanic.full.aged)
+subs <- split(titanic.train, is.na(titanic.train$age))
+titanic.train.age <- subs[[1]]
+titanic.train.not.age <- subs[[2]]
+
+subs <- split(titanic.test, is.na(titanic.test$age))
+titanic.test.age <- subs[[1]]
+titanic.test.not.age <- subs[[2]]
+
+source("age.R")
+
+model.age <- train.age.model(titanic.train.age)
 summary(model.age)
-predict(model.age, newdata=titanic.full.not.aged)
+
+page <- predict.age.model(titanic.test.age, model.age)
+cor(titanic.test.age$age, page)
 
