@@ -14,5 +14,8 @@ predict.age.model <- function(df, model){
   stopifnot(is.data.frame(df))
   stopifnot(class(model)[1]=="glm")
   
-  predict(model, newdata=df)
+  ret <- predict(model, newdata=df)
+  ret[ret<0] <- 0.5
+  
+  return (ret)
 }
