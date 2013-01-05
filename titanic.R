@@ -63,9 +63,12 @@ sapply(pclassrange, function(x){
   titanic.full$fare.strata[titanic.full$pclass==x] <<- getStrata(x, titanic.full)
 })
 # Need missing fare modelling
-# sapply(pclassrange, function(x){
-#   titanic.predict$fare.strata[titanic.predict$pclass==x] <<- getStrata(x, titanic.predict)
-# })
+titanic.predict$fare[is.na(titanic.predict$fare)] <- median(titanic.predict$fare[titanic.predict$pclass==3 & !is.na(titanic.predict$fare)])
+  
+#
+sapply(pclassrange, function(x){
+  titanic.predict$fare.strata[titanic.predict$pclass==x] <<- getStrata(x, titanic.predict)
+})
 
 df <- ddply(.data=titanic.train, .(pclass,fare.strata), summarize,
       total=length(survived),
@@ -99,6 +102,8 @@ cor(titanic.test.age$age, page)
 titanic.train$age[is.na(titanic.train$age)] <- predict.age.model(subset(titanic.train, is.na(titanic.train$age)), model.age)
 
 titanic.test$age[is.na(titanic.test$age)] <- predict.age.model(subset(titanic.test, is.na(titanic.test$age)), model.age)
+
+titanic.predict$age[is.na(titanic.predict$age)] <- predict.age.model(subset(titanic.predict, is.na(titanic.predict$age)), model.age)
 
 summary(titanic.train$age)
 
@@ -167,7 +172,7 @@ library(neuralnet)
 titanic.train.nn <- titanic.train
 titanic.train.nn$sex <- as.numeric(titanic.train.nn$sex)-1
 ## LONG RUN
-titanic.nn <- neuralnet(formula2, data=titanic.train.nn, hidden=c(10), stepmax=1e9, threshold=0.1)
+titanic.nn <- neuralnet(formula2, data=titanic.train.nn, hidden=c(8), stepmax=1e9, threshold=0.1)
 ## ********
 plot(titanic.nn)
 
@@ -182,17 +187,67 @@ tb <- table(titanic.test$survived, ps$nn)
 # tb
 results$nn <- (tb[1,1]+tb[2,2])/sum(tb)
 
+##
+## SVM
+##
+library(e1071)
+formula3 <- as.factor(survived) ~ pclass + sex + as.factor(fare.strata) + age
+tune <- tune.svm(formula3, data=titanic.train, gamma=10^(-4:-1), cost=10^(1:4))
+# summary(tune)
+tune$best.parameters
+
+titanic.svm <- svm(formula3, 
+               data=titanic.train, 
+               type="C-classification", 
+               kernel="radial", 
+               probability=T, 
+               gamma=tune$best.parameters$gamma, 
+               cost=tune$best.parameters$cost)
+ps$svm <- as.numeric(predict(titanic.svm, newdata=titanic.test))-1
+tb <- table(titanic.test$survived, ps$svm)
+# tb
+results$svm <- (tb[1,1]+tb[2,2])/sum(tb)
+results$svm
+
 #
 # show results
 #
-
 as.data.frame(results)
 
 psr <- as.data.frame(ps)
 psr$MEDIAN <- round(apply(psr, 1, median), 0)
 psr$RES <- as.numeric(titanic.test$survived)
+
+psr$ALL1 <- apply(psr[,1:6],1,mean)==1
+psr$ALL0 <- apply(psr[,1:6],1,mean)==0
+
+# Correct median(?)
+psr$MEDIAN[!psr$ALL0 & psr$MEDIAN==0] <- psr$randomforest[!psr$ALL0 & psr$MEDIAN==0]
+
 head(psr, 10)
 
 tb <- table(psr$MEDIAN, psr$RES)
 tb
 (tb[1,1]+tb[2,2])/sum(tb)
+
+# after compute analysis
+
+subset(psr, !psr$ALL1 & psr$MEDIAN==1 & psr$RES!=1) # FP
+subset(psr, !psr$ALL0 & psr$MEDIAN==0 & psr$RES!=0) # FN
+
+subset(psr, psr$MEDIAN!=psr$RES & !psr$ALL1 & !psr$ALL0)
+
+#
+#
+#
+
+sapply(titanic.predict, function(x) sum(is.na(x)))
+
+ans <- as.numeric(predict(titanic.rf, newdata=titanic.predict))-1
+write.csv(ans, file="submission02.csv", row.names=F)
+
+f1 <- read.csv("submission01.csv")
+f2 <- read.csv("submission02.csv")
+
+df <- cbind(f1, f2)
+subset(df, df[,1]!=df[,2])
