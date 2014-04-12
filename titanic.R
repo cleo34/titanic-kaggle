@@ -44,6 +44,9 @@ df <- ddply(titanic.train, .(pclass,survived), summarize,
 #   geom_rect(aes(xmin=q2,xmax=q3), fill = "blue",      colour = "black") +
 #   facet_grid(survived~pclass, scales="free")
 
+# Need missing fare modelling
+titanic.predict$fare[is.na(titanic.predict$fare)] <- median(titanic.predict$fare[titanic.predict$pclass==3 & !is.na(titanic.predict$fare)])
+  
 ## Constructing stratas
 getStrata <- function(pc, df){
   ret <- with(df, 
@@ -62,9 +65,7 @@ sapply(pclassrange, function(x){
 sapply(pclassrange, function(x){
   titanic.full$fare.strata[titanic.full$pclass==x] <<- getStrata(x, titanic.full)
 })
-# Need missing fare modelling
-titanic.predict$fare[is.na(titanic.predict$fare)] <- median(titanic.predict$fare[titanic.predict$pclass==3 & !is.na(titanic.predict$fare)])
-  
+
 #
 sapply(pclassrange, function(x){
   titanic.predict$fare.strata[titanic.predict$pclass==x] <<- getStrata(x, titanic.predict)
@@ -199,7 +200,7 @@ tune$best.parameters
 titanic.svm <- svm(formula3, 
                data=titanic.train, 
                type="C-classification", 
-               kernel="radial", 
+               kernel="linear", 
                probability=T, 
                gamma=tune$best.parameters$gamma, 
                cost=tune$best.parameters$cost)
